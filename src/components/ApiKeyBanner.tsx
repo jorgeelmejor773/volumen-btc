@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { KeyRound, CheckCircle2, AlertCircle, Eye, EyeOff, X, ExternalLink } from 'lucide-react';
+import { validateApiKey } from '../lib/geminiService';
 
 interface ApiKeyBannerProps {
   onKeyReady: (key: string) => void;
@@ -25,19 +26,7 @@ export const ApiKeyBanner: React.FC<ApiKeyBannerProps> = ({ onKeyReady }) => {
       onKeyReady(stored);
       setShow(false);
     } else {
-      // Check if server already has the key via env
-      fetch('/api/health')
-        .then(() => fetch('/api/validate-key', { method: 'POST' }))
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.valid) {
-            setShow(false);
-            onKeyReady('');
-          } else {
-            setShow(true);
-          }
-        })
-        .catch(() => setShow(true));
+      setShow(true);
     }
   }, []);
 
@@ -46,23 +35,19 @@ export const ApiKeyBanner: React.FC<ApiKeyBannerProps> = ({ onKeyReady }) => {
     setStatus('validating');
     setErrorMsg('');
     try {
-      const res = await fetch('/api/validate-key', {
-        method: 'POST',
-        headers: { 'x-gemini-api-key': key.trim() },
-      });
-      const data = await res.json();
-      if (data.valid) {
+      const valid = await validateApiKey(key.trim());
+      if (valid) {
         setStatus('valid');
         localStorage.setItem(LS_KEY, key.trim());
         onKeyReady(key.trim());
         setTimeout(() => setShow(false), 1200);
       } else {
         setStatus('invalid');
-        setErrorMsg(data.error || 'API key inválida. Verifica en Google AI Studio.');
+        setErrorMsg('API key inválida. Verifica en Google AI Studio.');
       }
     } catch {
       setStatus('invalid');
-      setErrorMsg('No se pudo conectar con el servidor.');
+      setErrorMsg('No se pudo conectar con Gemini. Verifica la key.');
     }
   };
 

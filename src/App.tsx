@@ -15,6 +15,7 @@ import { TemplatesModal } from './components/TemplatesModal';
 import { ExportModal } from './components/ExportModal';
 import { HistoryDrawer } from './components/HistoryDrawer';
 import { ApiKeyBanner, ApiKeyResetButton, getStoredApiKey } from './components/ApiKeyBanner';
+import { generateTts, enhanceText as geminiEnhanceText } from './lib/geminiService';
 import { concatenateWavBuffers, base64ToUint8Array } from './utils/audioUtils';
 import { AlertCircle, CheckCircle2, Sparkles, X } from 'lucide-react';
 
@@ -169,22 +170,13 @@ export default function App() {
     setErrorMessage(null);
 
     try {
-      const res = await fetch('/api/tts/generate', {
-        method: 'POST',
-        headers: apiHeaders(),
-        body: JSON.stringify({
-          text: freeText,
-          voiceName: selectedVoice.geminiVoice,
-          accent: selectedAccent,
-          tone: selectedTone,
-          customInstruction: customInstruction,
-        }),
+      const data = await generateTts(geminiApiKey || getStoredApiKey(), {
+        text: freeText,
+        voiceName: selectedVoice.geminiVoice,
+        accent: selectedAccent,
+        tone: selectedTone,
+        customInstruction,
       });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Error al sintetizar el audio en el servidor.');
-      }
 
       setActiveAudioBase64(data.audioBase64);
       setActiveAudioDuration(data.duration);
@@ -222,22 +214,13 @@ export default function App() {
     const voice = SPANISH_VOICES.find((v) => v.id === seg.voiceId) || selectedVoice;
 
     try {
-      const res = await fetch('/api/tts/generate', {
-        method: 'POST',
-        headers: apiHeaders(),
-        body: JSON.stringify({
-          text: seg.text,
-          voiceName: voice.geminiVoice,
-          accent: seg.accent,
-          tone: seg.tone,
-          customInstruction: seg.customInstruction,
-        }),
+      const data = await generateTts(geminiApiKey || getStoredApiKey(), {
+        text: seg.text,
+        voiceName: voice.geminiVoice,
+        accent: seg.accent,
+        tone: seg.tone,
+        customInstruction: seg.customInstruction,
       });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Error al sintetizar bloque.');
-      }
 
       // Update segment with audio
       setSegments((prev) =>
@@ -285,21 +268,16 @@ export default function App() {
         setActiveSegmentId(seg.id);
         const voice = SPANISH_VOICES.find((v) => v.id === seg.voiceId) || selectedVoice;
 
-        const res = await fetch('/api/tts/generate', {
-          method: 'POST',
-          headers: apiHeaders(),
-          body: JSON.stringify({
-            text: seg.text,
-            voiceName: voice.geminiVoice,
-            accent: seg.accent,
-            tone: seg.tone,
-            customInstruction: seg.customInstruction,
-          }),
+        const data = await generateTts(geminiApiKey || getStoredApiKey(), {
+          text: seg.text,
+          voiceName: voice.geminiVoice,
+          accent: seg.accent,
+          tone: seg.tone,
+          customInstruction: seg.customInstruction,
         });
 
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-          throw new Error(`Error en bloque ${i + 1}: ${data.error}`);
+        if (!data.audioBase64) {
+          throw new Error(`Error en bloque ${i + 1}.`);
         }
 
         audioChunks.push(data.audioBase64);
@@ -360,23 +338,14 @@ export default function App() {
     const spk2 = SPANISH_VOICES.find((v) => v.id === speaker2VoiceId) || SPANISH_VOICES[1];
 
     try {
-      const res = await fetch('/api/tts/generate', {
-        method: 'POST',
-        headers: apiHeaders(),
-        body: JSON.stringify({
-          text: dialogueText,
-          multiSpeaker: true,
-          speakerVoiceConfigs: [
-            { speaker: spk1.name, voiceName: spk1.geminiVoice },
-            { speaker: spk2.name, voiceName: spk2.geminiVoice },
-          ],
-        }),
+      const data = await generateTts(geminiApiKey || getStoredApiKey(), {
+        text: dialogueText,
+        multiSpeaker: true,
+        speakerVoiceConfigs: [
+          { speaker: spk1.name, voiceName: spk1.geminiVoice },
+          { speaker: spk2.name, voiceName: spk2.geminiVoice },
+        ],
       });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Error al sintetizar el diálogo.');
-      }
 
       setActiveAudioBase64(data.audioBase64);
       setActiveAudioDuration(data.duration);
@@ -408,15 +377,9 @@ export default function App() {
 
     setIsEnhancing(true);
     try {
-      const res = await fetch('/api/tts/enhance-text', {
-        method: 'POST',
-        headers: apiHeaders(),
-        body: JSON.stringify({ text: freeText, mode }),
-      });
-
-      const data = await res.json();
-      if (data.success && data.enhancedText) {
-        setFreeText(data.enhancedText);
+      const enhanced = await geminiEnhanceText(geminiApiKey || getStoredApiKey(), freeText, mode);
+      if (enhanced) {
+        setFreeText(enhanced);
         showSuccess('¡Texto optimizado para locución en español!');
       }
     } catch (err: any) {
@@ -443,21 +406,12 @@ export default function App() {
 
     try {
       const textToSpeak = sampleText || voice.previewSentence;
-      const res = await fetch('/api/tts/generate', {
-        method: 'POST',
-        headers: apiHeaders(),
-        body: JSON.stringify({
-          text: textToSpeak,
-          voiceName: voice.geminiVoice,
-          accent: voice.accent,
-          tone: voice.recommendedTone,
-        }),
+      const data = await generateTts(geminiApiKey || getStoredApiKey(), {
+        text: textToSpeak,
+        voiceName: voice.geminiVoice,
+        accent: voice.accent,
+        tone: voice.recommendedTone,
       });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Error al obtener muestra de voz');
-      }
 
       if (!previewAudioRef.current) {
         previewAudioRef.current = new Audio();
